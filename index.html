@@ -1,0 +1,826 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>諏訪湖北部の工業と土地利用の変化</title>
+
+    <!-- MapLibre CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.css" />
+
+    <style>
+        body {
+            margin: 0;
+            font-family: sans-serif;
+        }
+
+        h1 {
+            font-size: 22px;
+            padding: 10px 20px;
+            margin: 0;
+            background-color: #eeeeee;
+        }
+
+        #map {
+            height: calc(100vh - 50px);
+            position: relative;
+        }
+
+        /* レイヤー切り替えメニュー */
+        #menu {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            left: auto;
+
+            width: 295px;
+            max-width: calc(100vw - 40px);
+            max-height: calc(100vh - 90px);
+            overflow-y: auto;
+
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 12px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+
+            z-index: 10;
+            font-size: 16px;
+            line-height: 1.4;
+        }
+
+        .menu-heading {
+            color: #555555;
+            font-size: 13px;
+            font-weight: bold;
+            margin: 4px 6px 5px 6px;
+        }
+
+        .menu-heading.overlay-heading {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #dddddd;
+        }
+
+        #menu label {
+            margin: 0 0 4px 0;
+            padding: 7px 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: background-color 0.2s ease;
+        }
+
+        #menu label:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        #menu label:has(input:checked) {
+            background-color: rgba(0, 122, 255, 0.2);
+            font-weight: bold;
+        }
+
+        #menu label:has(input:checked):hover {
+            background-color: rgba(0, 122, 255, 0.3);
+        }
+
+        #menu input[type="checkbox"],
+        #menu input[type="radio"] {
+            display: none;
+        }
+
+        .layer-color-box {
+            display: inline-block;
+            font-size: 18px;
+            line-height: 1;
+            margin-right: 7px;
+            flex: 0 0 auto;
+        }
+
+        @media screen and (max-width: 600px) {
+            #menu {
+                width: 255px;
+                font-size: 14px;
+            }
+
+            #menu label {
+                padding: 6px 8px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>諏訪湖北部の工業と土地利用の変化</h1>
+
+<div id="map">
+    <div id="menu">
+        <div class="menu-heading">背景地図</div>
+
+        <label>
+            <input type="radio" name="base-map" id="toggle-std" checked>
+            <span>標準地図 (地理院地図)</span>
+        </label>
+
+        <label>
+            <input type="radio" name="base-map" id="toggle-konjaku1910">
+            <span>今昔マップ 1910年頃</span>
+        </label>
+
+        <label>
+            <input type="radio" name="base-map" id="toggle-konjaku2001">
+            <span>今昔マップ 1996-2001年頃</span>
+        </label>
+
+        <div class="menu-heading overlay-heading">重ね合わせレイヤー</div>
+
+        <label>
+            <input type="checkbox" id="toggle-landformNatural">
+            <span>地形分類（自然地形）</span>
+        </label>
+
+        <label>
+            <input type="checkbox" id="toggle-kuwabatake1910">
+            <span class="layer-color-box" style="color:#D2B48C;">■</span>
+            <span>1910年 桑畑</span>
+        </label>
+
+        <label>
+            <input type="checkbox" id="toggle-koujou1910">
+            <span class="layer-color-box" style="color:#FFB6C1;">■</span>
+            <span>1910年 工場</span>
+        </label>
+
+        <label>
+            <input type="checkbox" id="toggle-koujou2001">
+            <span class="layer-color-box" style="color:#87CEEB;">■</span>
+            <span>2001年 工場</span>
+        </label>
+
+        <div class="menu-heading overlay-heading">交通ネットワーク（地理院Vector）</div>
+
+        <label>
+            <input type="checkbox" id="toggle-railway">
+            <span class="layer-color-box" style="color:#4a148c;">━</span>
+            <span>鉄道（JR中央本線など）</span>
+        </label>
+
+        <label>
+            <input type="checkbox" id="toggle-majorRoads">
+            <span class="layer-color-box" style="color:#2e7d32;">━</span><span class="layer-color-box" style="color:#ef6c00;">━</span>
+            <span>主要道路・高速道路</span>
+        </label>
+    </div>
+</div>
+
+<!-- MapLibre JS -->
+<script src="https://unpkg.com/maplibre-gl@2.4.0/dist/maplibre-gl.js"></script>
+
+<script>
+// 1. 地図の初期化（背景は地理院の淡色地図、諏訪湖北部の扇状地エリアを中心にアップで表示）
+const map = new maplibregl.Map({
+    container: 'map',
+    style: {
+        version: 8,
+        sources: {
+            'gsi-std': {
+                type: 'raster',
+                tiles: ['https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png'],
+                tileSize: 256,
+                attribution: "地理院タイル / 今昔マップ on the web"
+            }
+        },
+        layers: [{
+            id: 'layer-std',
+            type: 'raster',
+            source: 'gsi-std',
+            layout: { 'visibility': 'visible' }
+        }]
+    },
+    center: [138.068, 36.070],
+    zoom: 13.8
+});
+
+map.on('load', () => {
+
+    // 2. 今昔マップ 1910年頃
+    map.addSource('konjaku1910', {
+        type: 'raster',
+        tiles: ['https://ktgis.net/kjmapw/kjtilemap/matsumoto/00/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        scheme: 'tms',
+        minzoom: 8,
+        maxzoom: 16,
+        attribution: '今昔マップ on the web'
+    });
+    map.addLayer({
+        id: 'layer-konjaku1910',
+        type: 'raster',
+        source: 'konjaku1910',
+        layout: { 'visibility': 'none' },
+        paint: { 'raster-opacity': 0.7 }
+    });
+
+    // 3. 今昔マップ 2001年頃
+    map.addSource('konjaku2001', {
+        type: 'raster',
+        tiles: ['https://ktgis.net/kjmapw/kjtilemap/matsumoto/04/{z}/{x}/{y}.png'],
+        tileSize: 256,
+        scheme: 'tms',
+        minzoom: 8,
+        maxzoom: 16,
+        attribution: '今昔マップ on the web'
+    });
+    map.addLayer({
+        id: 'layer-konjaku2001',
+        type: 'raster',
+        source: 'konjaku2001',
+        layout: { 'visibility': 'none' },
+        paint: { 'raster-opacity': 0.7 }
+    });
+
+    // 4. 地形分類（自然地形：広域でも細かい地形分類を表示）
+    const LANDFORM_MIN_ZOOM = 10;
+    const LANDFORM_DETAIL_ZOOM = 14;
+
+    const naturalSetting = {
+        sourceId: 'landformNatural',
+        layerId: 'layer-landformNatural',
+        tileURL: 'https://cyberjapandata.gsi.go.jp/xyz/experimental_landformclassification1/{z}/{x}/{y}.geojson',
+        styleURL: 'https://cyberjapandata.gsi.go.jp/xyz/experimental_landformclassification1/style.js',
+        defaultColor: '#cccccc'
+    };
+
+    let landformRequestNumber = 0;
+    let landformTimer = null;
+    let loadedNaturalStyle = null;
+
+    async function loadGSIStyle(styleURL) {
+        try {
+            const response = await fetch(styleURL);
+            if (!response.ok) return null;
+            const styleText = await response.text();
+
+            try {
+                const styleLoader = new Function(`
+                    var window = {};
+                    var style, tileStyle, styles, styleData, styleMap, vectorTileStyle;
+                    ${styleText}
+                    if (typeof style !== "undefined") return style;
+                    if (typeof tileStyle !== "undefined") return tileStyle;
+                    if (typeof styles !== "undefined") return styles;
+                    if (typeof styleData !== "undefined") return styleData;
+                    if (typeof styleMap !== "undefined") return styleMap;
+                    if (typeof vectorTileStyle !== "undefined") return vectorTileStyle;
+                    if (typeof window.style !== "undefined") return window.style;
+                    return null;
+                `);
+                const res = styleLoader();
+                if (res) return res;
+            } catch (e) {}
+
+            try {
+                const jsonMatch = styleText.match(/\{[\s\S]*\}/);
+                if (jsonMatch) return (new Function('return ' + jsonMatch[0]))();
+            } catch (e) {}
+
+            return null;
+        } catch (error) {
+            console.warn('style.jsの読み込みに失敗:', styleURL, error);
+            return null;
+        }
+    }
+
+    const fallbackLandformColors = {
+        "10101": "#d9cbae", "1010101": "#d9cbae", "11201": "#d9cbae", "11202": "#d9cbae", "11203": "#d9cbae", "11204": "#d9cbae",
+        "10202": "#9466ab", "10204": "#9466ab", "2010201": "#9466ab",
+        "10205": "#cc99ff", "10206": "#cc99ff",
+        "10301": "#ffaa00", "10302": "#ffaa00", "10303": "#ffaa00", "10304": "#ffaa00", "10305": "#ffaa00", "10306": "#ffaa00", "10307": "#ffaa00", "10308": "#ffaa00", "10310": "#ffaa00", "10312": "#ffaa00", "10314": "#ffaa00", "10508": "#ffaa00", "2010101": "#ffaa00",
+        "10401": "#99804d", "10402": "#99804d", "10403": "#99804d", "10404": "#99804d", "10406": "#99804d", "10407": "#99804d", "3010101": "#99804d",
+        "10501": "#cacc60", "10502": "#cacc60", "3020101": "#cacc60",
+        "10503": "#ffff33", "3040101": "#ffff33",
+        "10506": "#fbe09d", "10507": "#fbe09d", "10801": "#fbe09d",
+        "10504": "#ffff99", "10505": "#ffff99", "10512": "#ffff99", "3050101": "#ffff99",
+        "10601": "#a3cc7e", "2010301": "#a3cc7e",
+        "10701": "#bbff99", "10702": "#bbff99", "10705": "#bbff99", "3030101": "#bbff99",
+        "10703": "#00d1a4", "10804": "#00d1a4", "3030201": "#00d1a4",
+        "10704": "#6699ff", "3040201": "#6699ff", "3040202": "#6699ff",
+        "3040301": "#1f9999",
+        "10802": "#9f9fc4", "10803": "#9f9fc4", "10807": "#9f9fc4", "10808": "#9f9fc4",
+        "10805": "#e5ffff", "10806": "#e5ffff", "10901": "#e5ffff", "10903": "#e5ffff", "5010201": "#e5ffff",
+        "10904": "#779999", "5010301": "#779999",
+        "11001": "#85c4d1", "11003": "#85c4d1", "11009": "#85c4d1", "11011": "#85c4d1", "4010301": "#85c4d1",
+        "11002": "#8ad8b6",
+        "11004": "#ef8888", "11005": "#ef8888", "11006": "#ef8888", "11007": "#ef8888", "11014": "#ef8888", "4010201": "#ef8888",
+        "11008": "#c37aff", "4010101": "#c37aff",
+        "11010": "#ffe8e8",
+        "999999": "#144dfa",
+        "101": "#e6e600", "102": "#00e2e6", "103": "#2ae600", "104": "#e60400", "105": "#5e5ce6", "106": "#ff9600",
+        "11": "#998b79", "12": "#664d55", "13": "#7580D2", "21": "#C9FF05", "31": "#FF0116", "32": "#FF5101", "33": "#C975B0", "34": "#FFBBFC", "41": "#ffb31a", "51": "#C7FFF7", "61": "#FFEA01", "71": "#1201FF",
+        "1": "#998c7a", "3": "#FF0116", "4": "#ffb31a", "5": "#C7FFF7", "6": "#FFEA01", "7": "#1201FF",
+        "9999": "#ff00ff"
+    };
+
+    function getStyleColor(styleValue, code, defaultColor) {
+        const normalizedCode = String(code ?? '').trim();
+        if (styleValue) {
+            if (typeof styleValue === 'string') return styleValue;
+            if (typeof styleValue === 'object') {
+                const color = styleValue.fillColor ?? styleValue['fill-color'] ?? styleValue.fill ?? styleValue.color ?? styleValue.strokeColor ?? styleValue.stroke;
+                if (color) return color;
+            }
+        }
+        if (normalizedCode && fallbackLandformColors[normalizedCode]) {
+            return fallbackLandformColors[normalizedCode];
+        }
+        return defaultColor;
+    }
+
+    function getStyleOpacity(styleValue, code) {
+        const normalizedCode = String(code ?? '').trim();
+        if (styleValue && typeof styleValue === 'object') {
+            const opacity = styleValue.fillOpacity ?? styleValue['fill-opacity'] ?? styleValue.opacity;
+            const num = Number(opacity);
+            if (Number.isFinite(num)) return Math.max(0, Math.min(1, num));
+        }
+        if (normalizedCode === '9999') return 0.3;
+        return 0.5;
+    }
+
+    function findFeatureStyle(styleDefinition, feature) {
+        if (!feature || !feature.properties) return null;
+        const props = feature.properties;
+
+        if (typeof styleDefinition === 'function') {
+            try { return styleDefinition(feature); } catch (e) { return null; }
+        }
+
+        if (typeof styleDefinition === 'object' && styleDefinition !== null) {
+            const keysToCheck = [
+                props.code, props.Code, props.CODE,
+                props.classification, props.class, props.id,
+                props.type, props.org_code, props['地形分類コード']
+            ];
+
+            for (let val of keysToCheck) {
+                if (val === undefined || val === null) continue;
+                const strVal = String(val).trim();
+                if (styleDefinition[strVal] !== undefined) return styleDefinition[strVal];
+                
+                if (Array.isArray(styleDefinition)) {
+                    const found = styleDefinition.find(item => String(item.code || item.Code || item.id || '').trim() === strVal);
+                    if (found) return found;
+                }
+            }
+            if (styleDefinition.default !== undefined) return styleDefinition.default;
+        }
+        return null;
+    }
+
+    function applyStyleToFeatures(features, styleDefinition, defaultColor) {
+        return features.map(feature => {
+            const props = feature.properties || {};
+            const code = String(
+                props.code ?? props.Code ?? props.CODE ?? props.classification ?? props.class ?? props.classcode ?? props.landformcode ?? props.org_code ?? props.id ?? props['分類コード'] ?? props['地形分類コード'] ?? props['地形コード'] ?? ''
+            ).trim();
+            const featureStyle = findFeatureStyle(styleDefinition, feature);
+
+            return {
+                ...feature,
+                properties: {
+                    ...props,
+                    __landformColor: getStyleColor(featureStyle, code, defaultColor),
+                    __landformOpacity: getStyleOpacity(featureStyle, code)
+                }
+            };
+        });
+    }
+
+    map.addSource(naturalSetting.sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] }
+    });
+
+    map.addLayer({
+        id: naturalSetting.layerId,
+        type: 'fill',
+        source: naturalSetting.sourceId,
+        minzoom: LANDFORM_MIN_ZOOM,
+        layout: { visibility: 'none' },
+        paint: {
+            'fill-color': ['get', '__landformColor'],
+            'fill-opacity': ['get', '__landformOpacity'],
+            'fill-outline-color': '#555555'
+        }
+    });
+
+    function longitudeToTileX(longitude, zoom) {
+        const tileCount = Math.pow(2, zoom);
+        return Math.floor((longitude + 180) / 360 * tileCount);
+    }
+
+    function latitudeToTileY(latitude, zoom) {
+        const tileCount = Math.pow(2, zoom);
+        const safeLatitude = Math.max(-85.05112878, Math.min(85.05112878, latitude));
+        const latitudeRadian = safeLatitude * Math.PI / 180;
+        return Math.floor((1 - Math.log(Math.tan(latitudeRadian) + 1 / Math.cos(latitudeRadian)) / Math.PI) / 2 * tileCount);
+    }
+
+    function clampTileNumber(number, zoom) {
+        const maximum = Math.pow(2, zoom) - 1;
+        return Math.max(0, Math.min(maximum, number));
+    }
+
+    function createTileURL(template, zoom, x, y) {
+        return template.replace('{z}', zoom).replace('{x}', x).replace('{y}', y);
+    }
+
+    function buildTileURLsForZoom(setting, tileZoom) {
+        const bounds = map.getBounds();
+        const tileMaximum = Math.pow(2, tileZoom) - 1;
+
+        const minimumX = clampTileNumber(longitudeToTileX(bounds.getWest(), tileZoom), tileZoom);
+        const maximumX = clampTileNumber(longitudeToTileX(bounds.getEast(), tileZoom), tileZoom);
+        const minimumY = clampTileNumber(latitudeToTileY(bounds.getNorth(), tileZoom), tileZoom);
+        const maximumY = clampTileNumber(latitudeToTileY(bounds.getSouth(), tileZoom), tileZoom);
+
+        const tileURLs = [];
+        for (let x = minimumX; x <= maximumX; x++) {
+            for (let y = minimumY; y <= maximumY; y++) {
+                if (x >= 0 && x <= tileMaximum && y >= 0 && y <= tileMaximum) {
+                    tileURLs.push(createTileURL(setting.tileURL, tileZoom, x, y));
+                }
+            }
+        }
+        return tileURLs;
+    }
+
+    async function fetchGeoJSONTile(url) {
+        try {
+            const response = await fetch(url);
+            if (!response.ok) return [];
+            const geojson = await response.json();
+            if (geojson && geojson.type === 'FeatureCollection' && Array.isArray(geojson.features)) {
+                return geojson.features;
+            }
+            if (geojson && geojson.type === 'Feature') return [geojson];
+            return [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    async function fetchVisibleLandformTiles(setting, currentZoom) {
+        let tileZoom = currentZoom >= 11 ? LANDFORM_DETAIL_ZOOM : 13;
+        let tileURLs = buildTileURLsForZoom(setting, tileZoom);
+
+        if (tileURLs.length > 400 && tileZoom > 13) {
+            tileZoom = 13;
+            tileURLs = buildTileURLsForZoom(setting, tileZoom);
+        }
+
+        const tileResults = await Promise.all(tileURLs.map(fetchGeoJSONTile));
+        return tileResults.flat();
+    }
+
+    async function loadLandformTiles() {
+        const naturalCheckbox = document.getElementById('toggle-landformNatural');
+        if (!naturalCheckbox || !naturalCheckbox.checked) return;
+
+        const thisRequestNumber = ++landformRequestNumber;
+        const currentZoom = Math.floor(map.getZoom());
+
+        if (currentZoom < LANDFORM_MIN_ZOOM) {
+            map.getSource(naturalSetting.sourceId).setData({ type: 'FeatureCollection', features: [] });
+            return;
+        }
+
+        try {
+            if (!loadedNaturalStyle) {
+                loadedNaturalStyle = await loadGSIStyle(naturalSetting.styleURL);
+            }
+
+            const naturalFeatures = await fetchVisibleLandformTiles(naturalSetting, currentZoom);
+
+            if (thisRequestNumber !== landformRequestNumber) return;
+
+            const styledNaturalFeatures = applyStyleToFeatures(naturalFeatures, loadedNaturalStyle, naturalSetting.defaultColor);
+            map.getSource(naturalSetting.sourceId).setData({ type: 'FeatureCollection', features: styledNaturalFeatures });
+
+        } catch (error) {
+            console.error('地形分類の読み込みに失敗しました。', error);
+        }
+    }
+
+    function scheduleLandformLoad() {
+        clearTimeout(landformTimer);
+        landformTimer = setTimeout(() => { loadLandformTiles(); }, 250);
+    }
+
+    map.on('moveend', scheduleLandformLoad);
+
+    // 5. 交通ネットワーク（国土地理院 バイナリベクトルタイル）
+    map.addSource('gsi-bvmap', {
+        type: 'vector',
+        tiles: ['https://cyberjapandata.gsi.go.jp/xyz/experimental_bvmap/{z}/{x}/{y}.pbf'],
+        minzoom: 4,
+        maxzoom: 16,
+        attribution: '国土地理院（地理院地図Vector）'
+    });
+
+    // 5-1. 主要道路・高速道路（高速道路＝緑、国道・幹線道路＝オレンジ）
+    map.addLayer({
+        id: 'layer-majorRoads',
+        type: 'line',
+        source: 'gsi-bvmap',
+        'source-layer': 'road',
+        layout: {
+            'visibility': 'none',
+            'line-join': 'round',
+            'line-cap': 'round'
+        },
+        filter: [
+            'any',
+            ['==', ['get', 'rdCtg'], 0],   // 国道
+            ['==', ['get', 'rdCtg'], 3],   // 高速自動車国道等
+            ['>=', ['get', 'rnkWidth'], 3] // 幅員13m以上の幹線道路
+        ],
+        paint: {
+            'line-color': [
+                'case',
+                ['==', ['get', 'rdCtg'], 3], '#2e7d32', // 高速道路（中央道・長野道）
+                '#ef6c00' // 国道・幹線道路
+            ],
+            'line-width': [
+                'interpolate', ['linear'], ['zoom'],
+                10, 2,
+                14, 4.5
+            ],
+            'line-opacity': 0.85
+        }
+    });
+
+    // 5-2. 鉄道（JR中央本線など）
+    map.addLayer({
+        id: 'layer-railway',
+        type: 'line',
+        source: 'gsi-bvmap',
+        'source-layer': 'railway',
+        layout: {
+            'visibility': 'none',
+            'line-join': 'round',
+            'line-cap': 'round'
+        },
+        paint: {
+            'line-color': '#4a148c',
+            'line-width': [
+                'interpolate', ['linear'], ['zoom'],
+                10, 2.5,
+                14, 4.5
+            ],
+            'line-opacity': 0.9
+        }
+    });
+
+    // 6. GeoJSON（桑畑・工場）読み込み（初期表示はすべてオフ）
+    const loadGeoJSON = (url, id, color, outlineColor) => {
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                map.addSource(id, { type: 'geojson', data: data });
+                map.addLayer({
+                    id: 'layer-' + id,
+                    type: 'fill',
+                    source: id,
+                    layout: { 'visibility': 'none' },
+                    paint: {
+                        'fill-color': color,
+                        'fill-opacity': 0.7,
+                        'fill-outline-color': outlineColor
+                    }
+                });
+                // 交通レイヤーを常にポリゴンより手前（最前面）に維持する
+                if (map.getLayer('layer-majorRoads')) map.moveLayer('layer-majorRoads');
+                if (map.getLayer('layer-railway')) map.moveLayer('layer-railway');
+            })
+            .catch(err => console.warn(url + ' の読み込みをスキップしました。'));
+    };
+
+    loadGeoJSON('kuwabatake_1910.geojson', 'kuwabatake1910', '#D2B48C', '#A0826C');
+    loadGeoJSON('koujou_1910.geojson', 'koujou1910', '#FFB6C1', '#C71585');
+    loadGeoJSON('koujou_2001.geojson', 'koujou2001', '#87CEEB', '#1E90FF');
+
+    // 7. レイヤー切り替え機能
+    const baseMapList = [
+        { radioId: 'toggle-std', layerId: 'layer-std' },
+        { radioId: 'toggle-konjaku1910', layerId: 'layer-konjaku1910' },
+        { radioId: 'toggle-konjaku2001', layerId: 'layer-konjaku2001' }
+    ];
+
+    function changeBaseMap(selectedLayerId) {
+        baseMapList.forEach(item => {
+            if (map.getLayer(item.layerId)) {
+                map.setLayoutProperty(item.layerId, 'visibility', item.layerId === selectedLayerId ? 'visible' : 'none');
+            }
+        });
+    }
+
+    baseMapList.forEach(item => {
+        const radio = document.getElementById(item.radioId);
+        if (radio) {
+            radio.addEventListener('change', event => {
+                if (event.target.checked) changeBaseMap(item.layerId);
+            });
+        }
+    });
+
+    const overlayList = [
+        { checkboxId: 'toggle-landformNatural', layerId: 'layer-landformNatural' },
+        { checkboxId: 'toggle-kuwabatake1910', layerId: 'layer-kuwabatake1910' },
+        { checkboxId: 'toggle-koujou1910', layerId: 'layer-koujou1910' },
+        { checkboxId: 'toggle-koujou2001', layerId: 'layer-koujou2001' },
+        { checkboxId: 'toggle-railway', layerId: 'layer-railway' },
+        { checkboxId: 'toggle-majorRoads', layerId: 'layer-majorRoads' }
+    ];
+
+    overlayList.forEach(item => {
+        const checkbox = document.getElementById(item.checkboxId);
+        if (checkbox) {
+            checkbox.addEventListener('change', event => {
+                if (map.getLayer(item.layerId)) {
+                    map.setLayoutProperty(item.layerId, 'visibility', event.target.checked ? 'visible' : 'none');
+                    if (item.layerId === 'layer-landformNatural' && event.target.checked) {
+                        loadLandformTiles();
+                    }
+                }
+            });
+        }
+    });
+
+    // =====================================
+    // 8. クリックした地形のポップアップ情報表示機能
+    // =====================================
+    
+    const popup = new maplibregl.Popup({
+        closeButton: true,
+        closeOnClick: true,
+        maxWidth: '320px'
+    });
+
+    const landformDescriptions = {
+        "山地": {
+            origin: "周囲より標高が高く、尾根や谷などの急傾斜地で構成される土地。山がちな古い段丘崖の斜面や火山地を含みます。",
+            risk: "大雨や地震により、崖崩れや土石流、地すべりなどの土砂災害のリスクがあります。"
+        },
+        "台地": {
+            origin: "周囲より階段状に高くなった平坦な土地。過去の河川や海洋の侵食から取り残されたり、陸地が隆起して形成されました。",
+            risk: "低地に比べて河床から高く地盤も良好なため、洪水や地震によるリスクは比較的少ないですが、台地の縁辺部（斜面近く）では崖崩れに注意が必要です。"
+        },
+        "扇状地": {
+            origin: "山地からの谷の出口（谷口）から平地に向かって、急流河川が運んできた土砂や砂礫が扇状に堆積してできた緩やかな傾斜地。",
+            risk: "山地からの出水による浸水や、谷口に近い場所では土石流や土砂・洪水氾濫のリスクがあります。比較的地盤は良好で地震時には揺れにくい特徴があります。"
+        },
+        "氾濫平野": {
+            origin: "起伏が小さく、低くて平坦な土地。河川の洪水によって運ばれた砂や泥などが河川周辺に堆積したり、過去の海底が干上がってできました。",
+            risk: "河川の氾濫に注意が必要です。地盤は海岸に近いほど軟弱で、地震の際にやや揺れやすく、液状化が発生することもあります。"
+        },
+        "谷底平野": {
+            origin: "山地や台地の中を刻む河川沿いに、洪水堆積物が溜まって形成された細長い平坦地。",
+            risk: "大雨時には河川からの氾濫や急な増水に注意が必要です。地盤が柔らかい場所が多く、周辺斜面からの土砂流入にも注意が必要です。"
+        },
+        "自然堤防": {
+            origin: "現在や昔の河川に沿って細長く分布し、周囲より0.5〜数メートルほど高い微高地。河川が氾濫した場所に土砂が堆積してできました。",
+            risk: "周囲の低地と比べて水はけが良く洪水に対しては比較的安全ですが、大規模な洪水では浸水することがあります。"
+        },
+        "後背湿地": {
+            origin: "自然堤防や砂州などの後ろ側に位置する水はけの悪い低地。洪水時の水が残りやすく、粘土や泥が堆積してできました。",
+            risk: "河川の氾濫時に浸水しやすく、水が引きにくい特徴があります。地盤が非常に軟弱で、地震時に揺れやすく液状化リスクも高いため注意が必要です。"
+        },
+        "旧河道": {
+            origin: "かつて河川の流路だった場所で、流路の移動によって切り離され、その後に砂や泥などで埋められた周囲よりわずかに低い土地。",
+            risk: "河川の氾濫によって周囲よりも長期間浸水し、水はけが悪いです。地盤が軟弱で地震の際は揺れが大きくなりやすく、盛土・埋立地域では液状化のリスクが特に高くなります。"
+        },
+        "砂州・砂丘": {
+            origin: "主に海岸・湖岸沿いにあり、波や風、沿岸流によって運ばれた砂や礫が帯状・丘状に堆積してできた土地。",
+            risk: "通常の洪水では浸水を免れることが多いですが、沿岸部での高潮や津波、地震時の液状化に注意が必要です。"
+        },
+        "盛土地・埋立地": {
+            origin: "周囲の地表より高く盛土した土地や、海水面などの水部に土砂を投入して陸地にしたり、谷のような凹地を埋め立てて造成した土地。",
+            risk: "高さが十分でない場合には浸水のリスクがあります。山地や台地では降雨・地震により地盤崩壊のリスクがあります。低地や海・湖沼・河川を埋め立てた場所では液状化の発生傾向が非常に強いため注意が必要です。"
+        },
+        "切土地": {
+            origin: "山地や台地などの斜面を削り取って平坦に造成された土地。",
+            risk: "元々の地盤（地山）部分は比較的締まっていますが、削り取った背後や側面の急斜面（切土斜面）での崖崩れや、隣接する盛土部との境界付近での不同沈下に注意が必要です。"
+        }
+    };
+
+    const landformAliasMap = {
+        "山地・丘陵地": "山地", "山地斜面等": "山地",
+        "台地・段丘": "台地", "台地・段丘等": "台地",
+        "谷底平野・氾濫平野": "谷底平野",
+        "盛土地": "盛土地・埋立地", "埋立地": "盛土地・埋立地", "人工地形": "盛土地・埋立地",
+        "砂州": "砂州・砂丘", "砂丘": "砂州・砂丘",
+        "10101": "山地", "10102": "山地", "1010101": "山地", "11201": "山地", "11202": "山地", "11203": "山地", "11204": "山地", "3010101": "山地",
+        "10201": "台地", "10202": "台地", "10401": "台地", "10402": "台地", "10403": "台地", "10404": "台地", "10406": "台地", "10407": "台地", "2010101": "台地",
+        "10301": "扇状地", "10302": "扇状地", "10303": "扇状地", "10304": "扇状地", "10305": "扇状地", "10306": "扇状地", "10307": "扇状地", "10308": "扇状地", "10310": "扇状地", "10312": "扇状地", "10314": "扇状地", "10501": "扇状地", "10502": "扇状地", "10508": "扇状地", "3020101": "扇状地",
+        "10701": "氾濫平野", "10702": "氾濫平野", "10705": "氾濫平野", "3030101": "氾濫平野",
+        "10503": "自然堤防", "3040101": "自然堤防",
+        "10703": "後背湿地", "10804": "後背湿地", "3030201": "後背湿地",
+        "10504": "旧河道", "10505": "旧河道", "10512": "旧河道", "10704": "旧河道", "3040201": "旧河道", "3040202": "旧河道", "3050101": "旧河道",
+        "10802": "砂州・砂丘", "10803": "砂州・砂丘", "10807": "砂州・砂丘", "10808": "砂州・砂丘",
+        "11004": "盛土地・埋立地", "11005": "盛土地・埋立地", "11006": "盛土地・埋立地", "11007": "盛土地・埋立地", "11014": "盛土地・埋立地", "4010201": "盛土地・埋立地",
+        "11001": "切土地", "11003": "切土地", "11009": "切土地", "11011": "切土地", "4010301": "切土地"
+    };
+
+    function findLandformProperty(props) {
+        if (!props) return "名称不明";
+        const candidateKeys = [
+            'name', 'Name', 'NAME',
+            'code', 'Code', 'CODE',
+            'class', 'Class', 'CLASS',
+            'classification', 'Classification',
+            'org_code', 'id', '地形分類', '地形コード', '分類コード'
+        ];
+        for (const key of candidateKeys) {
+            if (props[key] !== undefined && props[key] !== null && props[key] !== '') {
+                return props[key];
+            }
+        }
+        return "名称不明";
+    }
+
+    function getLandformInfo(rawName) {
+        if (rawName === null || rawName === undefined) return null;
+        
+        const strName = String(rawName).trim();
+        if (!strName || strName === "名称不明") return null;
+
+        if (landformDescriptions[strName]) {
+            return { displayName: strName, data: landformDescriptions[strName] };
+        }
+
+        const mappedName = landformAliasMap[strName];
+        if (mappedName && landformDescriptions[mappedName]) {
+            return { displayName: mappedName, data: landformDescriptions[mappedName] };
+        }
+
+        for (const key in landformDescriptions) {
+            if (strName.includes(key) || key.includes(strName)) {
+                return { displayName: key, data: landformDescriptions[key] };
+            }
+        }
+
+        return null;
+    }
+
+    function addPopupToLayer(layerId) {
+        map.on('click', layerId, (e) => {
+            if (!e.features || e.features.length === 0) return;
+            
+            const feature = e.features[0];
+            const props = feature.properties || {};
+            
+            const rawLandformName = findLandformProperty(props);
+            const infoResult = getLandformInfo(rawLandformName);
+
+            let html = `<div style="font-family: sans-serif; font-size: 13px; line-height: 1.5; max-width: 280px;">`;
+            
+            if (infoResult) {
+                html += `<h3 style="margin: 0 0 8px 0; color: #005aa0; border-bottom: 2px solid #005aa0; padding-bottom: 4px; font-size: 16px;">${infoResult.displayName}</h3>`;
+                html += `<p style="margin: 6px 0 2px 0; color: #0055d4; font-weight: bold;">【土地の成り立ち】</p>`;
+                html += `<p style="margin: 0 0 8px 0; color: #333;">${infoResult.data.origin}</p>`;
+                html += `<p style="margin: 6px 0 2px 0; color: #d40000; font-weight: bold;">【自然災害リスク】</p>`;
+                html += `<p style="margin: 0; color: #333;">${infoResult.data.risk}</p>`;
+            } else {
+                html += `<h3 style="margin: 0 0 8px 0; color: #aa00aa; border-bottom: 1px solid #ccc; padding-bottom: 4px;">${String(rawLandformName)}</h3>`;
+                html += `<p style="margin: 4px 0 8px 0; color: #666;">（詳細な解説文が未登録の地形です）</p>`;
+                html += `<ul style="margin: 0; padding-left: 20px; font-size: 12px; color: #333;">`;
+                for (let key in props) {
+                    if (!key.startsWith('__')) {
+                        html += `<li><b>${key}</b>: ${props[key]}</li>`;
+                    }
+                }
+                html += `</ul>`;
+            }
+            html += `</div>`;
+
+            popup.setLngLat(e.lngLat)
+                .setHTML(html)
+                .addTo(map);
+        });
+
+        map.on('mouseenter', layerId, () => {
+            map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', layerId, () => {
+            map.getCanvas().style.cursor = '';
+        });
+    }
+
+    addPopupToLayer('layer-landformNatural');
+
+});
+</script>
+
+</body>
+</html>
